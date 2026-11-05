@@ -88,6 +88,13 @@ packed as cpio and appended to the unified ramdisk (recompressed to
 whole initramfs as a directory set `ramdisk_directory`, which is packed as
 gzipped cpio and used as is.
 
+## udev rules
+
+Rules under `udev/` are installed into `/lib/udev/rules.d`.
+`90-abm-udisks-ignore.rules` keeps udisks and `mount-sd@` away from the ABM
+`abm_settings` partition, and from the SD partitions passed as `systempart=`
+or `datapart=` when booted as an ABM guest. Standalone boots are unaffected.
+
 ## Bundled tools
 
 `mkbootimg.py`, `mkdtboimg.py`, `avbtool` (python2), `mkvendorboot.sh` and the
