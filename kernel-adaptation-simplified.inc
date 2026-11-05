@@ -172,6 +172,9 @@ mkdir -p %{buildroot}/lib/modules
 make -C %{source_directory} O=out %{?makeopts} INSTALL_MOD_STRIP=1 modules_install INSTALL_MOD_PATH=%{buildroot}
 %endif
 
+mkdir -p %{buildroot}/lib/udev/rules.d
+install -m 0644 kernel-adaptation-simplified/udev/*.rules %{buildroot}/lib/udev/rules.d/
+
 echo "***** Building Boot Image *****"
 KERNEL=%{source_directory}/out/arch/%{kernel_arch}/boot/%{kernel_image}
 %if 0%{?deviceinfo_bootimg_prebuilt_dtb:1}
