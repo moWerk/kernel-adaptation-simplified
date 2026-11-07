@@ -65,8 +65,10 @@ Optional (with defaults):
     deviceinfo_append_dtb           true appends the dtb to the kernel image (header 0/1)
     deviceinfo_bootimg_prebuilt_dtb dtb file in the device repo used instead of deviceinfo_dtb
     deviceinfo_bootimg_has_init_boot_partition  true puts the ramdisk into init_boot.img (header >= 3)
-    deviceinfo_init_boot_partition_size  defaults to 8388608
+    deviceinfo_init_boot_partition_size  defaults to 8388608s
     deviceinfo_bootimg_qcdt / deviceinfo_halium_version / deviceinfo_rootfs_image_sector_size  passed to mkvendorboot.sh
+    deviceinfo_bootimg_include_recovery  passed to mkvendorboot.sh to add a recovery initrd (set to true) 
+                                    - ramdisk-recovery.img to be supplied by the device kernel package
     crossbuild                      OBS cross toolchain instead of makeopts/clang
 
 Put device-specific build dependencies in the device spec. For example, a
