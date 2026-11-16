@@ -11,7 +11,7 @@ The regular [HADK](https://hadk.sailfishos.org/) builds Sailfish OS on top of An
 
 - graphics through Mesa
 - audio through ALSA and PulseAudio
-- sensors through IIO, or on Qualcomm phones with a Sensor Core through the ADSP's sensor service (see [Sensors](#sensors))
+- sensors through IIO, or on Qualcomm phones with a Sensor Core through the sensor service of the audio DSP (ADSP, the signal processor that also runs the sensors) (see [Sensors](#sensors))
 - vibration through the kernel's ff-memless input interface
 
 The rest is the same as in the HADK: the Platform SDK, `build_packages.sh`, mic and kickstarts, and mostly the same package names. Instead of an Android tree you keep five small repos.
@@ -207,12 +207,12 @@ On a 7.x kernel these matter too. Each came from a mer-kernel-check error or fro
 | `CONFIG_NET_L3_MASTER_DEV=y`, `CONFIG_INET_AH`, `CONFIG_INET_ESP`, `CONFIG_INET_IPCOMP`, `CONFIG_INET6_AH`, `CONFIG_INET6_ESP`, `CONFIG_PPP*`, `CONFIG_PPPOE`, `CONFIG_L2TP*` | the VPN plugins Sailfish ships. |
 | `CONFIG_BT_RFCOMM`, `CONFIG_BT_BNEP`, and `CONFIG_BT_LE=y` on arm64 | bluez profiles. arm64 defconfig turns Bluetooth LE off, which leaves no BLE at all. |
 | `CONFIG_NLS_UTF8=y` | vfat SD cards. |
-| `CONFIG_QRTR=y`, `CONFIG_QRTR_SMD=y`, `CONFIG_QCOM_PD_MAPPER=y` (Qualcomm) | the modem and the DSPs offer their services over Qualcomm's IPC router (QRTR); its name service and the protection-domain mapper, which tells the DSPs where their services live, are in the kernel now. Built in, they exist before the remoteprocs start, and no userspace `pd-mapper` is needed (an old one that is still started misses firmware mounted late). |
+| `CONFIG_QRTR=y`, `CONFIG_QRTR_SMD=y`, `CONFIG_QCOM_PD_MAPPER=y` (Qualcomm) | the modem and the DSPs offer their services over Qualcomm's message router between the processors (QRTR, the IPC router); its name service and the protection-domain mapper, which tells the DSPs where their services live, are in the kernel now. Built in, they exist before the remoteprocs start, and no userspace `pd-mapper` is needed (an old one that is still started misses firmware mounted late). |
 | `CONFIG_ZRAM=m` | Sailfish's `zram` package gives swap in RAM. Optional. |
 
 Two rules the options do not express:
 
-- **Everything between the storage and the panel is built in; drivers that load a file at probe are modules.** With an initrd that loads no modules, the storage controller and its PHY, the clock controllers, interconnect, RPM, pinctrl, DRM and the panel, and their I2C and DMA dependencies have to be `=y`. On an SM6115 the display and GPU clock controllers, the GENI I2C controller and the GPI DMA as modules made mdss, adreno and the SMMU hit the deferred-probe timeout before udev could load them: the panel never lit and touch probed 47 s late. The other way round, a touch controller that fetches its configuration through the firmware loader (`goodix_9286_cfg.bin`) has to be a module, or the request fails before root is mounted.
+- **Everything between the storage and the panel is built in; drivers that load a file at probe are modules.** With an initrd that loads no modules, the storage controller and its PHY, the clock controllers, interconnect, RPM, pinctrl, DRM and the panel, and their I2C and DMA dependencies have to be `=y`. On an SM6115 the display and GPU clock controllers, the I2C controller (GENI, Qualcomm's serial engine) and its DMA engine (GPI) as modules made the display (mdss), the GPU (adreno) and the IOMMU (SMMU) hit the deferred-probe timeout before udev could load them: the panel never lit and touch probed 47 s late. The other way round, a touch controller that fetches its configuration through the firmware loader (`goodix_9286_cfg.bin`) has to be a module, or the request fails before root is mounted.
 - **If you generate the config, check that every line survived.** Kconfig silently demotes `=y` to `=m` or drops an option whose dependency is missing, and a config resolved on the unpatched tree loses every option the device patches introduce. One way that works: build `arm64 defconfig` plus a device fragment plus a Sailfish fragment, runs `olddefconfig` on the patched tree, then fails the build on any fragment line that does not appear verbatim in `.config`. The first kernel without that check had lost the keyboard, haptics, battery and camera drivers.
 
 ### Build it
@@ -734,7 +734,7 @@ victara's LED is a single green one, so we use `white`. Don't give the LED a `li
 
 #### The LED is one multicolor device
 
-Mainline device trees describe an RGB indicator as one LED class device of the multicolor framework (`rgb:status` with `multi_intensity` and `multi_index`), while every backend of mce-plugin-libhybris expects one device per colour (`vanilla` takes `RedDirectory`, `GreenDirectory`, `BlueDirectory`). Either split the device tree into three LEDs, or add a `multicolor` backend to mce-plugin-libhybris's sysfs-led (`BackEnd=multicolor`, `LedDirectory=/sys/class/leds/rgb:status`), which writes the colour to `multi_intensity`, switches with `brightness`, and blinks with its own timer, because the PMIC LPG's hardware blink gives every channel the same duty cycle out of phase and a green blink shows a red, green, blue sweep. Such a backend exists as a patch in the SM6115 port; it is not upstream.
+Mainline device trees describe an RGB indicator as one LED class device of the multicolor framework (`rgb:status` with `multi_intensity` and `multi_index`), while every backend of mce-plugin-libhybris expects one device per colour (`vanilla` takes `RedDirectory`, `GreenDirectory`, `BlueDirectory`). Either split the device tree into three LEDs, or add a `multicolor` backend to mce-plugin-libhybris's sysfs-led (`BackEnd=multicolor`, `LedDirectory=/sys/class/leds/rgb:status`), which writes the colour to `multi_intensity`, switches with `brightness`, and blinks with its own timer, because the hardware blink of the power management chip's LED pulse generator (PMIC, LPG) gives every channel the same duty cycle out of phase and a green blink shows a red, green, blue sweep. Such a backend exists as a patch in the SM6115 port; it is not upstream.
 
 ### Vibration
 
@@ -1199,7 +1199,7 @@ Both cameras of an SM6115 phone work in jolla-camera with Sailfish OS 5.2.0.22 o
 
 #### Kernel
 
-The camera sensors, the lens driver and the CAMSS resources for the SoC are in the device kernel series (for SM6115 none of them is upstream yet). CAMSS registers its cameras only when every sensor of its async notifier has bound, so one sensor failing its probe hides every camera: a front sensor that sometimes times out on I2C at boot needs a oneshot that retries the bind. The flash LED joins the rear camera's media device as a V4L2 flash subdevice (`CONFIG_V4L2_FLASH_LED_CLASS=m`, `flash-leds` in the camera node): the camera app runs sandboxed with `/sys` read-only, but it may open `/dev/v4l-subdev*`, so the plugin drives the flash there.
+The camera sensors, the lens driver and the CAMSS resources for the SoC are in the device kernel series (for SM6115 none of them is upstream yet). CAMSS registers its cameras only when every sensor of its async notifier has bound, so one sensor failing its probe hides every camera: a front sensor that sometimes times out on I2C at boot needs a oneshot that retries the bind. The flash LED joins the rear camera's media device as a flash subdevice of the kernel's video API (V4L2) (`CONFIG_V4L2_FLASH_LED_CLASS=m`, `flash-leds` in the camera node): the camera app runs sandboxed with `/sys` read-only, but it may open `/dev/v4l-subdev*`, so the plugin drives the flash there.
 
 #### libcamera
 
